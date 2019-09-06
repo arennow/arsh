@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <unistd.h>
+#include <assert.h>
 
 static void printHelp() {
 	enum struct Requirement : uint8_t {
@@ -69,7 +70,11 @@ static int recursivelyFindFile(std::string const & filename, std::string const &
 	DIR* dir = opendir(directoryPath.c_str());
 	if (dir) {
 		for (struct dirent* ent; (ent = readdir(dir));) {
+#if __linux__
+			std::string_view nodeName(ent->d_name);
+#else
 			std::string_view nodeName(ent->d_name, ent->d_namlen);
+#endif
 			
 			if (nodeName == "." || nodeName == "..") { continue; }
 			
