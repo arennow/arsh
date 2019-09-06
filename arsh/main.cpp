@@ -14,6 +14,47 @@
 #include <libgen.h>
 #include <unistd.h>
 
+static void printHelp() {
+	enum struct Requirement : uint8_t {
+		nothing = 0, taskName
+	};
+	
+	struct {
+		char flag;
+		std::string description;
+		Requirement requirement;
+	} const flags[] = {
+		{'h', "Print help information"},
+		{'v', "Be verbose"},
+		{'t', "Only run tasks with provided name", Requirement::taskName}
+	};
+	
+	fputs("arsh ", stdout);
+	
+	for (auto& flag : flags) {
+		fputc('[', stdout);
+		printf("-%c", flag.flag);
+		
+		switch (flag.requirement) {
+			case Requirement::taskName:
+				fputs(" TASK", stdout);
+				break;
+				
+			case Requirement::nothing:
+			default:
+				break;
+		}
+		
+		fputs("] ", stdout);
+	}
+	
+	puts("<ScanDir>");
+	
+	for (auto& flag : flags) {
+		printf("   -%c\t%s\n", flag.flag, flag.description.c_str());
+	}
+}
+
 static inline bool hasEnding(std::string_view fullString, std::string_view ending) {
 	if (fullString.length() >= ending.length()) {
 		return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
@@ -69,8 +110,12 @@ int main(int argc, char * argv[]) {
 	bool verbose = false;
 	
 	int ch;
-	while ((ch = getopt(argc, argv, "vt:")) != -1) {
+	while ((ch = getopt(argc, argv, "hvt:")) != -1) {
 		switch (ch) {
+			case 'h':
+				printHelp();
+				return 0;
+				
 			case 't':
 				filename = optarg;
 				filename += ".ar.sh";
