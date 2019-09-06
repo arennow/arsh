@@ -14,6 +14,7 @@
 #include <libgen.h>
 #include <unistd.h>
 #include <assert.h>
+#include <cstring>
 
 static void printHelp() {
 	enum struct Requirement : uint8_t {
@@ -103,9 +104,15 @@ static int recursivelyFindFile(std::string const & filename, std::string const &
 }
 
 static inline bool componentsOfFilePath(std::string_view const & filePath, std::string& directory, std::string& filename) {
-	auto correctedCPath = const_cast<char*>(filePath.begin());
-	directory = dirname(correctedCPath);
-	filename = basename(correctedCPath);
+	// dirname and basename can (AND DO ON LINUX) modify their arguments, so we have to copy the parameter
+	char cPath[filePath.length()+1];
+	
+	strncpy(cPath, filePath.begin(), sizeof(cPath));
+	directory = dirname(cPath);
+	
+	strncpy(cPath, filePath.begin(), sizeof(cPath));
+	filename = basename(cPath);
+	
 	return (!directory.empty() && !filename.empty());
 }
 
