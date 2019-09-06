@@ -152,7 +152,7 @@ int main(int argc, char * argv[]) {
 		std::string directory, filename;
 		assert(componentsOfFilePath(path, directory, filename));
 		
-		std::string const command = "cd " + directory + "; ./" + filename;
+		std::string const command = "cd '" + directory + "'; ./" + filename;
 		
 		system(command.c_str());
 		return true;
