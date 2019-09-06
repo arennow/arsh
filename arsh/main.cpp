@@ -14,6 +14,14 @@
 #include <libgen.h>
 #include <unistd.h>
 
+static inline bool hasEnding(std::string_view fullString, std::string_view ending) {
+	if (fullString.length() >= ending.length()) {
+		return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
+	} else {
+		return false;
+	}
+}
+
 static int recursivelyFindFile(std::string const & filename, std::string const & directoryPath, std::function<bool(std::string const &)> const & matchFunction) {
 	int count = 0;
 	
@@ -27,15 +35,17 @@ static int recursivelyFindFile(std::string const & filename, std::string const &
 			if (ent->d_type == DT_DIR) {
 				std::string const subdirectoryPath = directoryPath + "/" + std::string(nodeName);
 				count += recursivelyFindFile(filename, subdirectoryPath, matchFunction);
-			} else if (nodeName == filename) {
-				std::string fullPath;
-				fullPath.reserve(directoryPath.length() + filename.length() + 1);
-				fullPath += directoryPath;
-				fullPath += "/";
-				fullPath += filename;
-				
-				count += 1;
-				matchFunction(fullPath);
+			} else {
+				if ((filename.empty() && hasEnding(nodeName, ".ar.sh")) || (!filename.empty() && nodeName == filename)) {
+					std::string fullPath;
+					fullPath.reserve(directoryPath.length() + nodeName.length() + 1);
+					fullPath += directoryPath;
+					fullPath += "/";
+					fullPath += nodeName;
+					
+					count += 1;
+					matchFunction(fullPath);
+				}
 			}
 		}
 		closedir(dir);
@@ -46,20 +56,44 @@ static int recursivelyFindFile(std::string const & filename, std::string const &
 	return count;
 }
 
-static bool componentsOfFilePath(std::string_view const & filePath, std::string& directory, std::string& filename) {
+static inline bool componentsOfFilePath(std::string_view const & filePath, std::string& directory, std::string& filename) {
 	auto correctedCPath = const_cast<char*>(filePath.begin());
 	directory = dirname(correctedCPath);
 	filename = basename(correctedCPath);
 	return (!directory.empty() && !filename.empty());
 }
 
-int main(int argc, const char * argv[]) {
-	if (argc != 2) {
-		fprintf(stderr, "Wrong number of parameters; got %i instead of 1\n", argc-1);
-		return 1;
+int main(int argc, char * argv[]) {
+	std::string filename;
+	std::string directory;
+	bool verbose = false;
+	
+	int ch;
+	while ((ch = getopt(argc, argv, "vt:")) != -1) {
+		switch (ch) {
+			case 't':
+				filename = optarg;
+				filename += ".ar.sh";
+				break;
+				
+			case 'v':
+				verbose = true;
+				break;
+				
+			case ':':
+				fprintf(stderr, "Unexpected option -%c\n", optopt);
+				return 2;
+		}
 	}
 	
-	int count = recursivelyFindFile("update.ar.sh", argv[1], [](std::string const & path) -> bool {
+	if (argc > optind) {
+		directory = argv[optind];
+	} else {
+		fputs("No scan directory given\n", stderr);
+		return 2;
+	}
+	
+	int count = recursivelyFindFile(filename, directory, [](std::string const & path) -> bool {
 		struct stat nodeInfo;
 		if (stat(path.c_str(), &nodeInfo) == -1) {
 			perror("stat");
@@ -79,7 +113,9 @@ int main(int argc, const char * argv[]) {
 		return true;
 	});
 	
-	fprintf(stderr, "Found %i files\n", count);
+	if (verbose) {
+		fprintf(stderr, "Found %i files\n", count);
+	}
 	
 	return 0;
 }
