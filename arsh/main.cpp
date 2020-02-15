@@ -16,6 +16,13 @@
 #include <assert.h>
 #include <cstring>
 
+struct Options {
+	bool verbose = false;
+	bool quiet = false;
+};
+
+static Options options;
+
 static void printHelp() {
 	enum struct Requirement : uint8_t {
 		nothing = 0, taskName
@@ -28,6 +35,7 @@ static void printHelp() {
 	} const flags[] = {
 		{'h', "Print help information"},
 		{'v', "Be verbose"},
+		{'q', "Be quiet (non-verbose and don't print script output)"},
 		{'t', "Only run tasks with provided name", Requirement::taskName}
 	};
 	
@@ -119,10 +127,9 @@ static inline bool componentsOfFilePath(std::string_view const & filePath, std::
 int main(int argc, char * argv[]) {
 	std::string filename;
 	std::string directory;
-	bool verbose = false;
 	
 	int ch;
-	while ((ch = getopt(argc, argv, "hvt:")) != -1) {
+	while ((ch = getopt(argc, argv, "hvqt:")) != -1) {
 		switch (ch) {
 			case 'h':
 				printHelp();
@@ -134,7 +141,13 @@ int main(int argc, char * argv[]) {
 				break;
 				
 			case 'v':
-				verbose = true;
+				options.verbose = true;
+				options.quiet = false;
+				break;
+				
+			case 'q':
+				options.verbose = false;
+				options.quiet = true;
 				break;
 				
 			case ':':
@@ -166,11 +179,33 @@ int main(int argc, char * argv[]) {
 		
 		std::string const command = "cd '" + directory + "'; ./" + filename;
 		
-		system(command.c_str());
+		FILE* commandStream = popen(command.c_str(), "r");
+		if (!commandStream) { return false; }
+		
+		char buf[512];
+		
+		while (true) {
+			size_t readCount = fread(buf, 1, sizeof(buf), commandStream);
+			
+			if (readCount && !options.quiet) {
+				printf("%.*s", (int)readCount, buf);
+			}
+			
+			if (readCount < sizeof(buf)) {
+				if (feof(commandStream)) { break; }
+				if (ferror(commandStream)) {
+					perror("Error reading from popen");
+					break;
+				}
+			}
+		}
+		
+		pclose(commandStream);
+		
 		return true;
 	});
 	
-	if (verbose) {
+	if (options.verbose) {
 		fprintf(stderr, "Found %i files\n", count);
 	}
 	
