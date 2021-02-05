@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <string_view>
 #include <string>
+#include <vector>
 #include <functional>
 #include <sys/stat.h>
 #include <libgen.h>
@@ -59,7 +60,7 @@ static void printHelp() {
 		fputs("] ", stdout);
 	}
 	
-	puts("<ScanDir>");
+	puts("<ScanDir ...>");
 	
 	for (auto& flag : flags) {
 		printf("   -%c\t%s\n", flag.flag, flag.description.c_str());
@@ -125,9 +126,51 @@ static inline bool componentsOfFilePath(std::string_view const & filePath, std::
 	return (!directory.empty() && !filename.empty());
 }
 
+static bool processFoundFile(std::string const & path) {
+	struct stat nodeInfo;
+	if (stat(path.c_str(), &nodeInfo) == -1) {
+		perror("stat");
+		exit(1);
+	}
+	if (!(nodeInfo.st_mode & S_IXUSR)) {
+		fprintf(stderr, "%s not executable\n", path.c_str());
+		return true;
+	}
+	
+	std::string directory, filename;
+	assert(componentsOfFilePath(path, directory, filename));
+	
+	std::string const command = "cd '" + directory + "'; ./" + filename;
+	
+	FILE* commandStream = popen(command.c_str(), "r");
+	if (!commandStream) { return false; }
+	
+	char buf[512];
+	
+	while (true) {
+		size_t readCount = fread(buf, 1, sizeof(buf), commandStream);
+		
+		if (readCount && !options.quiet) {
+			printf("%.*s", (int)readCount, buf);
+		}
+		
+		if (readCount < sizeof(buf)) {
+			if (feof(commandStream)) { break; }
+			if (ferror(commandStream) && errno != EINTR) {
+				perror("Error reading from popen");
+				break;
+			}
+		}
+	}
+	
+	pclose(commandStream);
+	
+	return true;
+}
+
 int main(int argc, char * argv[]) {
 	std::string filename;
-	std::string directory;
+	std::vector<std::string> directories;
 	
 	int ch;
 	while ((ch = getopt(argc, argv, "hvqt:")) != -1) {
@@ -157,54 +200,20 @@ int main(int argc, char * argv[]) {
 		}
 	}
 	
-	if (argc > optind) {
-		directory = argv[optind];
-	} else {
+	while (argc > optind) {
+		directories.emplace_back(argv[optind++]);
+	}
+	
+	if (directories.empty()) {
 		fputs("No scan directory given\n", stderr);
 		return 2;
 	}
 	
-	int count = recursivelyFindFile(filename, directory, [](std::string const & path) -> bool {
-		struct stat nodeInfo;
-		if (stat(path.c_str(), &nodeInfo) == -1) {
-			perror("stat");
-			exit(1);
-		}
-		if (!(nodeInfo.st_mode & S_IXUSR)) {
-			fprintf(stderr, "%s not executable\n", path.c_str());
-			return true;
-		}
-		
-		std::string directory, filename;
-		assert(componentsOfFilePath(path, directory, filename));
-		
-		std::string const command = "cd '" + directory + "'; ./" + filename;
-		
-		FILE* commandStream = popen(command.c_str(), "r");
-		if (!commandStream) { return false; }
-		
-		char buf[512];
-		
-		while (true) {
-			size_t readCount = fread(buf, 1, sizeof(buf), commandStream);
-			
-			if (readCount && !options.quiet) {
-				printf("%.*s", (int)readCount, buf);
-			}
-			
-			if (readCount < sizeof(buf)) {
-				if (feof(commandStream)) { break; }
-				if (ferror(commandStream) && errno != EINTR) {
-					perror("Error reading from popen");
-					break;
-				}
-			}
-		}
-		
-		pclose(commandStream);
-		
-		return true;
-	});
+	int count = 0;
+	
+	for (auto const & directory : directories) {
+		count += recursivelyFindFile(filename, directory, &processFoundFile);
+	}
 	
 	if (options.verbose) {
 		fprintf(stderr, "Found %i files\n", count);
