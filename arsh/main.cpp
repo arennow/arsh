@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <cstring>
+#include <errno.h>
 
 struct Options {
 	bool verbose = false;
@@ -193,7 +194,7 @@ int main(int argc, char * argv[]) {
 			
 			if (readCount < sizeof(buf)) {
 				if (feof(commandStream)) { break; }
-				if (ferror(commandStream)) {
+				if (ferror(commandStream) && errno != EINTR) {
 					perror("Error reading from popen");
 					break;
 				}
